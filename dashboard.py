@@ -6,6 +6,11 @@ from nba_core import (
     build_team_h2h_table,
 )
 
+st.set_page_config(
+    page_title="BBall Scorer",
+    layout="wide"
+)
+
 # IMPORTS DO PDF
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
@@ -765,3 +770,4 @@ with tab_player:
                     file_name=f"report_{full_name.replace(' ', '_')}_multi.pdf",
                     mime="application/pdf",
                 )
+
