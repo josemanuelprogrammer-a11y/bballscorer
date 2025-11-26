@@ -12,6 +12,7 @@ from nba_api.stats.endpoints import (
     BoxScoreTraditionalV2,
     PlayByPlayV2,
 )
+from requests.exceptions import ReadTimeout
 
 
 # ----------------- HELPERS GERAIS ----------------- #
@@ -107,37 +108,49 @@ def find_team_by_abbr(search_text: str):
 
     return None
 
-
 def get_team_last_games(team_id: int, season_year: int, last_n: int = 10) -> pd.DataFrame:
-    """Últimos N jogos de uma equipa numa época (TeamGameLog)."""
+    """Últimos N jogos de uma equipa numa época (TeamGameLog). Se a API falhar, devolve DF vazio."""
     season_str = season_to_str(season_year)
 
-    logs = TeamGameLog(
-        team_id=team_id,
-        season=season_str,
-        season_type_all_star="Regular Season",
-        timeout=30,
-    )
-    df = logs.get_data_frames()[0].copy()
+    try:
+        logs = TeamGameLog(
+            team_id=team_id,
+            season=season_str,
+            season_type_all_star="Regular Season",
+            timeout=30,
+        )
+    except ReadTimeout:
+        print(f"[TIMEOUT] TeamGameLog para equipa {team_id} época {season_str}")
+        return pd.DataFrame()
+    except Exception as e:
+        print(f"[ERRO] TeamGameLog para equipa {team_id} época {season_str}: {e}")
+        return pd.DataFrame()
 
+    df = logs.get_data_frames()[0].copy()
     df["GAME_DATE"] = pd.to_datetime(df["GAME_DATE"])
     df = df.sort_values("GAME_DATE", ascending=False).head(last_n)
     return df
 
-
 def get_team_season_games(team_id: int, season_year: int) -> pd.DataFrame:
-    """Todos os jogos da época (ordenados da data mais recente para a mais antiga)."""
+    """Todos os jogos da época (ordenados da data mais recente para a mais antiga). Se falhar, devolve DF vazio."""
     season_str = season_to_str(season_year)
 
-    logs = TeamGameLog(
-        team_id=team_id,
-        season=season_str,
-        season_type_all_star="Regular Season",
-        timeout=30,
-    )
+    try:
+        logs = TeamGameLog(
+            team_id=team_id,
+            season=season_str,
+            season_type_all_star="Regular Season",
+            timeout=30,
+        )
+    except ReadTimeout:
+        print(f"[TIMEOUT] TeamGameLog (season) para equipa {team_id} época {season_str}")
+        return pd.DataFrame()
+    except Exception as e:
+        print(f"[ERRO] TeamGameLog (season) para equipa {team_id} época {season_str}: {e}")
+        return pd.DataFrame()
+
     df = logs.get_data_frames()[0].copy()
 
-    # normalizar nome da coluna do ID do jogo
     if "Game_ID" in df.columns and "GAME_ID" not in df.columns:
         df = df.rename(columns={"Game_ID": "GAME_ID"})
 
@@ -433,6 +446,9 @@ def build_team_matchup_report(
     # ----- Forma geral (últimos N) -----
     df_home_all = get_team_last_games(home_id, season, last_n_general)
     df_away_all = get_team_last_games(away_id, season, last_n_general)
+
+    if df_home_all is None or df_away_all is None or df_home_all.empty or df_away_all.empty:
+        return None
 
     home_general = summarize_team_stats(df_home_all)
     away_general = summarize_team_stats(df_away_all)
