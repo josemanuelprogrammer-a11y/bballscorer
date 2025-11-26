@@ -167,7 +167,7 @@ def style_team_block(df_block: pd.DataFrame, home_name: str, away_name: str):
                 styles.append("")
         return styles
 
-    styler = df_show.style.apply(color_from_flags, axis=1).format(precision=1)
+    styler = df_show.style.apply(color_from_flags, axis=1).format(precision=0)
     return styler
 
 def style_player_table(df_multi: pd.DataFrame):
@@ -202,7 +202,7 @@ def style_player_table(df_multi: pd.DataFrame):
                 styles.append("")
         return styles
 
-    styler = df_show.style.apply(color_row, axis=1).format(precision=1)
+    styler = df_show.style.apply(color_row, axis=1).format(precision=0)
     return styler
 
 def style_h2h_table(df_h2h: pd.DataFrame):
@@ -217,7 +217,7 @@ def style_h2h_table(df_h2h: pd.DataFrame):
     if len(flag_cols) != 2:
         # fallback: devolve apenas com formatação numérica
         num_cols = df.select_dtypes(include="number").columns
-        return df.style.format(precision=1, subset=num_cols)
+        return df.style.format(precision=0, subset=num_cols)
 
     home_flag_col, away_flag_col = flag_cols
     pts_home_col = "PTS Casa"
@@ -258,7 +258,7 @@ def style_h2h_table(df_h2h: pd.DataFrame):
     styler = (
         df_show.style
         .apply(color_row, axis=1)
-        .format(precision=1, subset=num_cols)  # 111 em vez de 111.000000
+        .format(precision=0, subset=num_cols)  # 111 em vez de 111.000000
     )
     return styler
 
@@ -1034,3 +1034,4 @@ with tab_player:
                     file_name=f"report_{full_name.replace(' ', '_')}_multi.pdf",
                     mime="application/pdf",
                 )
+
