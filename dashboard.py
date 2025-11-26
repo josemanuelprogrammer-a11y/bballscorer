@@ -7,21 +7,18 @@ from nba_core import (
     build_team_h2h_table,
 )
 
-st.set_page_config(
-    page_title="BBall Scorer",
-    layout="wide"
-)
-
 # IMPORTS DO PDF
 from reportlab.lib.pagesizes import A4, landscape
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib import colors
 from reportlab.lib.units import cm
-from reportlab.platypus import PageBreak
 import io
 
+# ---------------------------------------------------------
+# Mapa abreviaturas -> nomes completos
+# ---------------------------------------------------------
 TEAM_ABBR_TO_NAME = {
     "ATL": "Atlanta Hawks",
     "BOS": "Boston Celtics",
@@ -88,7 +85,7 @@ def draw_header_footer(canvas, doc, title_text: str):
     canvas.drawCentredString(
         width / 2,
         height - 28,
-        "BBall Scorer Estatísticas NBA | Versão gratuita de teste https://app.bballscorer.com/",
+        "BBall Scorer Estatísticas NBA | Versão de teste https://app.bballscorer.com/",
     )
 
     canvas.setFont("Helvetica-Bold", 13)
@@ -122,24 +119,18 @@ def _strip_prefix_metric(df_block: pd.DataFrame) -> pd.DataFrame:
         )
     return df_block
 
+
 def style_team_block(df_block: pd.DataFrame, home_name: str, away_name: str):
     """
-    Recebe um pedaço do df_teams (ex.: só linhas 'Geral - ...'
-    ou só 'Casa/Fora - ...') e devolve um Styler com:
-      - colunas de ✓ removidas
-      - coluna Métrica sem prefixos
-      - células de valor pintadas (verde / vermelho)
-      - números formatados com 1 casa decimal
+    Estilo para blocos de equipas (forma geral / casa-fora).
     """
     df_block = _strip_prefix_metric(df_block).reset_index(drop=True)
 
-    # nomes das colunas de equipa (já vêm como nome completo)
     home_col = home_name
     away_col = away_name
     home_flag_col = f"{home_name} ✓"
     away_flag_col = f"{away_name} ✓"
 
-    # flags de vantagem/desvantagem
     flags = df_block[[home_flag_col, away_flag_col]].copy()
     df_show = df_block.drop(columns=[home_flag_col, away_flag_col])
 
@@ -170,6 +161,7 @@ def style_team_block(df_block: pd.DataFrame, home_name: str, away_name: str):
 
     styler = df_show.style.apply(color_from_flags, axis=1).format(precision=0)
     return styler
+
 
 def style_player_table(df_multi: pd.DataFrame):
     """
@@ -206,17 +198,15 @@ def style_player_table(df_multi: pd.DataFrame):
     styler = df_show.style.apply(color_row, axis=1).format(precision=0)
     return styler
 
+
 def style_h2h_table(df_h2h: pd.DataFrame):
     """
-    Remove colunas '... ✓' e pinta as células de PTS Casa / PTS Fora
-    de verde/vermelho com base nesses flags. Formata números como inteiros.
+    Remove colunas '... ✓' e pinta PTS Casa / PTS Fora com base nas flags.
     """
     df = df_h2h.copy().reset_index(drop=True)
 
-    # identificar colunas de flags (Casa ✓, Fora ✓)
     flag_cols = [c for c in df.columns if "✓" in c]
     if len(flag_cols) != 2:
-        # fallback: devolve apenas com formatação numérica
         num_cols = df.select_dtypes(include="number").columns
         return df.style.format(precision=0, subset=num_cols)
 
@@ -227,7 +217,6 @@ def style_h2h_table(df_h2h: pd.DataFrame):
     flags_home = df[home_flag_col]
     flags_away = df[away_flag_col]
 
-    # dataframe a mostrar (sem colunas ✓)
     df_show = df.drop(columns=flag_cols)
 
     def color_row(row):
@@ -259,15 +248,16 @@ def style_h2h_table(df_h2h: pd.DataFrame):
     styler = (
         df_show.style
         .apply(color_row, axis=1)
-        .format(precision=0, subset=num_cols)  # 111 em vez de 111.000000
+        .format(precision=0, subset=num_cols)
     )
     return styler
+
 
 # ---------------------------------------------------------
 # Configuração da página
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="BBall Scorer",
+    page_title="BBall Scorer Estatísticas NBA",
     layout="wide",
 )
 
@@ -277,7 +267,7 @@ with col_logo:
     st.image("bball_logo.png", width=140)
 
 with col_title:
-    st.title("BBall Scorer Estatísticas NBA")
+    st.title("BBall Scorer")
 
 st.markdown(
     "Ferramenta para analisar **equipas e jogadores da NBA** com base em estatísticas diversas. "
@@ -324,6 +314,12 @@ with tab_teams:
     with col_g3:
         last_n_h2h = st.slider("Últimos jogos H2H", 2, 10, 6)
 
+    mostrar_h2h = st.checkbox(
+        "Mostrar confrontos diretos (H2H)",
+        value=True,
+        help="Desmarca os confrontos diretos caso não pretendas visualizar os mesmos.",
+    )
+
     if st.button("📊 Gerar análise de equipas"):
         if not home_abbr or not away_abbr:
             st.error("Preenche as duas equipas (casa e fora).")
@@ -367,7 +363,6 @@ with tab_teams:
 
                 df_teams = df_teams.rename(columns=rename_cols)
 
-                # nomes que vamos usar daqui para a frente como "colunas da equipa"
                 home_col = home_full
                 away_col = away_full
 
@@ -394,7 +389,7 @@ with tab_teams:
                     styled_casa = style_team_block(df_casafora, home_col, away_col)
                     st.table(styled_casa)
 
-                # CSV com df_teams completo
+                # ---------- CSV ----------
                 csv_teams = df_teams.to_csv(index=False).encode("utf-8-sig")
                 st.download_button(
                     label="💾 Descarregar tabela em CSV",
@@ -403,46 +398,79 @@ with tab_teams:
                     mime="text/csv",
                 )
 
-                # ---------- TABELA H2H DETALHADA ----------
-                h2h_table = build_team_h2h_table(
-                    home_abbr=home_abbr,
-                    away_abbr=away_abbr,
-                    start_season=season_team,
-                    last_n_h2h=last_n_h2h,
-                    max_seasons_back=5,
+                # ---------- Excel ----------
+                excel_buffer_teams = io.BytesIO()
+                with pd.ExcelWriter(excel_buffer_teams, engine="openpyxl") as writer:
+                    df_teams.to_excel(writer, index=False, sheet_name="Comparação")
+
+                excel_buffer_teams.seek(0)
+
+                st.download_button(
+                    label="📊 Descarregar tabela em Excel",
+                    data=excel_buffer_teams,
+                    file_name=f"teams_{home_abbr.replace(' ', '_')}_vs_{away_abbr.replace(' ', '_')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 )
 
-                if h2h_table is not None and not h2h_table.empty:
-                    h2h_count = h2h_table.attrs.get("h2h_count", len(h2h_table))
-                    h2h_avg_total = h2h_table.attrs.get(
-                        "h2h_avg_total_points",
-                        float(h2h_table["Total pontos"].mean()),
+                # ---------- TABELA H2H DETALHADA ----------
+                h2h_table = None
+
+                if mostrar_h2h:
+                    h2h_table = build_team_h2h_table(
+                        home_abbr=home_abbr,
+                        away_abbr=away_abbr,
+                        start_season=season_team,
+                        last_n_h2h=last_n_h2h,
+                        max_seasons_back=3,  # menos épocas para ficar mais rápido
                     )
 
-                    st.markdown("---")
-                    st.markdown(f"#### Últimos {h2h_count} confrontos diretos (H2H)")
-                    st.markdown(
-                        f"Média de **total de pontos** nesses jogos: **{h2h_avg_total:.1f}**."
-                    )
+                    if h2h_table is not None and not h2h_table.empty:
+                        h2h_count = h2h_table.attrs.get("h2h_count", len(h2h_table))
+                        h2h_avg_total = h2h_table.attrs.get(
+                            "h2h_avg_total_points",
+                            float(h2h_table["Total pontos"].mean()),
+                        )
 
-                    # mapear siglas -> nomes completos nas colunas de equipa
-                    team_name_map = {home_abbr: home_full, away_abbr: away_full}
-                    h2h_display = h2h_table.replace(team_name_map)
+                        st.markdown("---")
+                        st.markdown(f"#### Últimos {h2h_count} confrontos diretos (H2H)")
+                        st.markdown(
+                            f"Média de **total de pontos** nesses jogos: **{h2h_avg_total:.1f}**."
+                        )
 
-                    styled_h2h = style_h2h_table(h2h_display)
-                    st.table(styled_h2h)
+                        team_name_map = {home_abbr: home_full, away_abbr: away_full}
+                        h2h_display = h2h_table.replace(team_name_map)
 
-                    csv_h2h = h2h_display.to_csv(index=False).encode("utf-8-sig")
-                    st.download_button(
-                        label="💾 Descarregar H2H em CSV",
-                        data=csv_h2h,
-                        file_name=f"h2h_{home_abbr.replace(' ', '_')}_vs_{away_abbr.replace(' ', '_')}.csv",
-                        mime="text/csv",
-                    )
-                else:
-                    st.info(
-                        "Não foram encontrados confrontos diretos recentes entre estas equipas nas últimas épocas."
-                    )
+                        styled_h2h = style_h2h_table(h2h_display)
+                        st.table(styled_h2h)
+
+                        # ---------- CSV ----------
+                        csv_h2h = h2h_display.to_csv(index=False).encode("utf-8-sig")
+                        st.download_button(
+                            label="💾 Descarregar H2H em CSV",
+                            data=csv_h2h,
+                            file_name=f"h2h_{home_abbr.replace(' ', '_')}_vs_{away_abbr.replace(' ', '_')}.csv",
+                            mime="text/csv",
+                        )
+
+                        # ---------- Excel ----------
+                        excel_buffer_h2h = io.BytesIO()
+                        with pd.ExcelWriter(excel_buffer_h2h, engine="openpyxl") as writer:
+                            h2h_display.to_excel(writer, index=False, sheet_name="H2H")
+
+                        excel_buffer_h2h.seek(0)
+
+                        st.download_button(
+                            label="📊 Descarregar H2H em Excel",
+                            data=excel_buffer_h2h,
+                            file_name=f"h2h_{home_abbr.replace(' ', '_')}_vs_{away_abbr.replace(' ', '_')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        )
+
+                    else:
+                        st.info(
+                            "Não foram encontrados confrontos diretos recentes entre estas equipas nas últimas épocas."
+                        )
+
                 # ---------- BOTÃO PDF (Relatório de equipas) ----------
                 pdf_buffer_teams = io.BytesIO()
 
@@ -481,12 +509,9 @@ with tab_teams:
                     )
                 )
 
-                # -------- Tabelas: Forma geral e Casa/Fora (igual ao dashboard) --------
-
                 home_flag_col = f"{home_col} ✓"
                 away_flag_col = f"{away_col} ✓"
 
-                # separar blocos
                 mask_geral = df_teams["Métrica"].str.startswith("Geral -")
                 mask_casafora = df_teams["Métrica"].str.startswith("Casa/Fora -")
 
@@ -500,7 +525,6 @@ with tab_teams:
                     if df_block_raw is None or df_block_raw.empty:
                         return
 
-                    # título do bloco
                     elements_teams.append(Paragraph(titulo, styles["Heading3"]))
                     elements_teams.append(Spacer(1, 6))
 
@@ -509,7 +533,6 @@ with tab_teams:
                     flags_block = df_block_raw[[home_flag_col, away_flag_col]].reset_index(drop=True)
 
                     df_block = df_block_raw.drop(columns=[home_flag_col, away_flag_col]).copy()
-                    # arredondar números e converter para string
                     num_cols_block = df_block.select_dtypes(include="number").columns
                     df_block[num_cols_block] = df_block[num_cols_block].round(1)
                     df_block = df_block.astype(str)
@@ -529,12 +552,10 @@ with tab_teams:
                         ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
                     ]
 
-                    # índices das colunas da equipa
                     home_idx = df_block.columns.get_loc(home_col)
                     away_idx = df_block.columns.get_loc(away_col)
 
-                    # pintar células dos valores com base nas flags
-                    for row_idx in range(1, len(table_data)):  # 1 = ignora header
+                    for row_idx in range(1, len(table_data)):
                         flag_home = str(flags_block.loc[row_idx - 1, home_flag_col]).strip()
                         flag_away = str(flags_block.loc[row_idx - 1, away_flag_col]).strip()
 
@@ -560,28 +581,22 @@ with tab_teams:
                     elements_teams.append(table)
                     elements_teams.append(Spacer(1, 10))
 
-
-                # bloco 1: forma geral
                 build_team_block_table(df_geral_raw, "Forma geral (últimos jogos)")
-
-                # bloco 2: casa / fora
                 build_team_block_table(
                     df_casafora_raw, "Casa vs Fora (últimos jogos em casa/fora)"
                 )
 
-                if h2h_table is not None and not h2h_table.empty:
-                    # 👉 força nova página antes do H2H
+                # ------- H2H no PDF (se existir e se foi calculado) -------
+                if mostrar_h2h and h2h_table is not None and not h2h_table.empty:
                     elements_teams.append(PageBreak())
-                
-                    # 👉 espaçamento a partir do topo da página (aumenta/diminui à vontade)
-                    elements_teams.append(Spacer(1, 30))  # 60 pts ≈ 2 cm
-                
+                    elements_teams.append(Spacer(1, 30))
+
                     h2h_count = h2h_table.attrs.get("h2h_count", len(h2h_table))
                     h2h_avg_total = h2h_table.attrs.get(
                         "h2h_avg_total_points",
                         float(h2h_table["Total pontos"].mean()),
                     )
-                
+
                     elements_teams.append(
                         Paragraph(
                             f"Últimos {h2h_count} confrontos diretos (H2H)",
@@ -599,22 +614,18 @@ with tab_teams:
                     team_name_map = {home_abbr: home_full, away_abbr: away_full}
                     df_h2h_raw = h2h_table.replace(team_name_map).reset_index(drop=True)
 
-
-                    # identificar colunas de flags
                     flag_cols = [c for c in df_h2h_raw.columns if "✓" in c]
                     if len(flag_cols) == 2:
-                        home_flag_col, away_flag_col = flag_cols
-                        flags_home = df_h2h_raw[home_flag_col]
-                        flags_away = df_h2h_raw[away_flag_col]
+                        home_flag_col_h2h, away_flag_col_h2h = flag_cols
+                        flags_home = df_h2h_raw[home_flag_col_h2h]
+                        flags_away = df_h2h_raw[away_flag_col_h2h]
                         df_h2h = df_h2h_raw.drop(columns=flag_cols)
                     else:
                         flags_home = flags_away = None
                         df_h2h = df_h2h_raw
 
-                    # arredondar números
                     num_cols_h2h = df_h2h.select_dtypes(include="number").columns
                     df_h2h[num_cols_h2h] = df_h2h[num_cols_h2h].round(0)
-
                     df_h2h = df_h2h.astype(str)
 
                     headers_h2h = list(df_h2h.columns)
@@ -635,7 +646,6 @@ with tab_teams:
                     green_color = colors.HexColor("#c6efce")
                     red_color = colors.HexColor("#ffc7ce")
 
-                    # índices das colunas de PTS
                     try:
                         pts_home_idx = df_h2h.columns.get_loc("PTS Casa")
                         pts_away_idx = df_h2h.columns.get_loc("PTS Fora")
@@ -885,12 +895,27 @@ with tab_player:
                 styled_multi = style_player_table(df_multi)
                 st.table(styled_multi)
 
+                # ---------- CSV ----------
                 csv_multi = df_multi.to_csv(index=False).encode("utf-8-sig")
                 st.download_button(
                     label="💾 Descarregar relatório em CSV",
                     data=csv_multi,
                     file_name=f"report_{full_name.replace(' ', '_')}_multi.csv",
                     mime="text/csv",
+                )
+
+                # ---------- Excel ----------
+                excel_buffer_multi = io.BytesIO()
+                with pd.ExcelWriter(excel_buffer_multi, engine="openpyxl") as writer:
+                    df_multi.to_excel(writer, index=False, sheet_name="Jogador")
+
+                excel_buffer_multi.seek(0)
+
+                st.download_button(
+                    label="📊 Descarregar relatório em Excel",
+                    data=excel_buffer_multi,
+                    file_name=f"report_{full_name.replace(' ', '_')}_multi.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 )
 
                 # ---------- PDF jogador ----------
@@ -1040,6 +1065,7 @@ with tab_player:
                     file_name=f"report_{full_name.replace(' ', '_')}_multi.pdf",
                     mime="application/pdf",
                 )
+
 
 
 
