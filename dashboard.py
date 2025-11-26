@@ -267,7 +267,7 @@ def style_h2h_table(df_h2h: pd.DataFrame):
 # Configuração da página
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="BBall Scorer Estatísticas NBA",
+    page_title="BBall Scorer",
     layout="wide",
 )
 
@@ -280,8 +280,8 @@ with col_title:
     st.title("BBall Scorer Estatísticas NBA")
 
 st.markdown(
-    "Ferramenta para analisar **equipas e jogadores da NBA** com base em estatísticas de "
-    "pontos, ressaltos, assistências, triplos convertidos, roubos de bola, desarmes de lançamento, etc.\n\n"
+    "Ferramenta para analisar **equipas e jogadores da NBA** com base em estatísticas diversas. "
+    "Teste gratuitamente por tempo limitado\n\n"
 )
 
 # ------------------- TABS PRINCIPAIS ------------------- #
@@ -1040,6 +1040,7 @@ with tab_player:
                     file_name=f"report_{full_name.replace(' ', '_')}_multi.pdf",
                     mime="application/pdf",
                 )
+
 
 
 
