@@ -88,7 +88,7 @@ def draw_header_footer(canvas, doc, title_text: str):
     canvas.drawCentredString(
         width / 2,
         height - 28,
-        "BBall Scorer – estatísticas NBA | www.bballscorer.com",
+        "BBall Scorer Estatísticas NBA | Versão gratuita de teste https://app.bballscorer.com/",
     )
 
     canvas.setFont("Helvetica-Bold", 13)
@@ -267,7 +267,7 @@ def style_h2h_table(df_h2h: pd.DataFrame):
 # Configuração da página
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="NBA - Estatísticas",
+    page_title="BBall Scorer Estatísticas NBA",
     layout="wide",
 )
 
@@ -277,7 +277,7 @@ with col_logo:
     st.image("bball_logo.png", width=140)
 
 with col_title:
-    st.title("Estatísticas NBA")
+    st.title("BBall Scorer Estatísticas NBA")
 
 st.markdown(
     "Ferramenta para analisar **equipas e jogadores da NBA** com base em estatísticas de "
@@ -574,7 +574,7 @@ with tab_teams:
                     elements_teams.append(PageBreak())
                 
                     # 👉 espaçamento a partir do topo da página (aumenta/diminui à vontade)
-                    elements_teams.append(Spacer(1, 60))  # 60 pts ≈ 2 cm
+                    elements_teams.append(Spacer(1, 30))  # 60 pts ≈ 2 cm
                 
                     h2h_count = h2h_table.attrs.get("h2h_count", len(h2h_table))
                     h2h_avg_total = h2h_table.attrs.get(
@@ -1040,6 +1040,7 @@ with tab_player:
                     file_name=f"report_{full_name.replace(' ', '_')}_multi.pdf",
                     mime="application/pdf",
                 )
+
 
 
 
