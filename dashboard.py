@@ -273,7 +273,7 @@ st.set_page_config(
 col_logo, col_title = st.columns([0.4, 6])
 
 with col_logo:
-    st.image("bball_logo.png", width=90)
+    st.image("bball_logo.png", width=140)
 
 with col_title:
     st.title("Estatísticas NBA")
@@ -1034,4 +1034,5 @@ with tab_player:
                     file_name=f"report_{full_name.replace(' ', '_')}_multi.pdf",
                     mime="application/pdf",
                 )
+
 
