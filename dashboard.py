@@ -258,6 +258,7 @@ def style_h2h_table(df_h2h: pd.DataFrame):
 # ---------------------------------------------------------
 st.set_page_config(
     page_title="BBall Scorer Estatísticas NBA",
+    page_icon="favicon.png",
     layout="wide",
 )
 
@@ -1065,6 +1066,7 @@ with tab_player:
                     file_name=f"report_{full_name.replace(' ', '_')}_multi.pdf",
                     mime="application/pdf",
                 )
+
 
 
 
