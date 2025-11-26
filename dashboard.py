@@ -400,7 +400,7 @@ with tab_teams:
 
                 # ---------- Excel ----------
                 excel_buffer_teams = io.BytesIO()
-                with pd.ExcelWriter(excel_buffer_teams, engine="openpyxl") as writer:
+                with pd.ExcelWriter(excel_buffer_teams, engine="xlsxwriter") as writer:
                     df_teams.to_excel(writer, index=False, sheet_name="Comparação")
 
                 excel_buffer_teams.seek(0)
@@ -454,7 +454,7 @@ with tab_teams:
 
                         # ---------- Excel ----------
                         excel_buffer_h2h = io.BytesIO()
-                        with pd.ExcelWriter(excel_buffer_h2h, engine="openpyxl") as writer:
+                        with pd.ExcelWriter(excel_buffer_h2h, engine="xlsxwriter") as writer:
                             h2h_display.to_excel(writer, index=False, sheet_name="H2H")
 
                         excel_buffer_h2h.seek(0)
@@ -906,7 +906,7 @@ with tab_player:
 
                 # ---------- Excel ----------
                 excel_buffer_multi = io.BytesIO()
-                with pd.ExcelWriter(excel_buffer_multi, engine="openpyxl") as writer:
+                with pd.ExcelWriter(excel_buffer_multi, engine="xlsxwriter") as writer:
                     df_multi.to_excel(writer, index=False, sheet_name="Jogador")
 
                 excel_buffer_multi.seek(0)
@@ -1065,6 +1065,7 @@ with tab_player:
                     file_name=f"report_{full_name.replace(' ', '_')}_multi.pdf",
                     mime="application/pdf",
                 )
+
 
 
 
