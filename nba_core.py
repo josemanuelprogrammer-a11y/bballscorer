@@ -28,6 +28,7 @@ STAT_COLS = {
 # métricas onde "menos é melhor" para comparação Green/Red em equipas
 LOWER_BETTER_METRICS = {
     "Turnovers por jogo",
+    "Pontos concedidos por jogo",
 }
 
 
@@ -144,6 +145,36 @@ def get_team_season_games(team_id: int, season_year: int) -> pd.DataFrame:
     df = df.sort_values("GAME_DATE", ascending=False)
     return df
 
+def get_team_season_games_all(team_id: int, season_year: int) -> pd.DataFrame:
+    """Todos os jogos da época (Regular Season + Pre Season), ordenados da data mais recente para a mais antiga."""
+    season_str = season_to_str(season_year)
+
+    df_all = pd.DataFrame()
+
+    for season_type in ["Regular Season", "Pre Season"]:
+        try:
+            logs = TeamGameLog(
+                team_id=team_id,
+                season=season_str,
+                season_type_all_star=season_type,
+                timeout=30,
+            )
+            df_temp = logs.get_data_frames()[0].copy()
+            df_all = pd.concat([df_all, df_temp], ignore_index=True)
+        except Exception:
+            continue
+
+    if df_all.empty:
+        return df_all
+
+    # normalizar nome da coluna do ID do jogo
+    if "Game_ID" in df_all.columns and "GAME_ID" not in df_all.columns:
+        df_all = df_all.rename(columns={"Game_ID": "GAME_ID"})
+
+    df_all["GAME_DATE"] = pd.to_datetime(df_all["GAME_DATE"])
+    df_all = df_all.sort_values("GAME_DATE", ascending=False)
+    return df_all
+
 def get_last_h2h_games(
     home_team: dict,
     away_team: dict,
@@ -151,16 +182,9 @@ def get_last_h2h_games(
     last_n_h2h: int = 6,
     max_seasons_back: int = 5,
 ) -> Optional[pd.DataFrame]:
-    """
-    Vai buscar os últimos N jogos H2H entre duas equipas,
-    começando na época start_season e recuando até max_seasons_back épocas.
+    """Vai buscar os últimos N jogos H2H entre duas equipas (Regular Season + Pre Season).
 
-    Devolve DataFrame com colunas:
-    - GAME_DATE
-    - HOME_TEAM (abreviação)
-    - AWAY_TEAM (abreviação)
-    - PTS_HOME
-    - PTS_AWAY
+    Começa na época start_season e recua até max_seasons_back épocas.
     """
 
     if not home_team or not away_team:
@@ -178,8 +202,9 @@ def get_last_h2h_games(
             break
 
         try:
-            df_home = get_team_season_games(home_id, season_year)
-            df_away = get_team_season_games(away_id, season_year)
+            # AGORA usa a versão que junta RS + Pre Season
+            df_home = get_team_season_games_all(home_id, season_year)
+            df_away = get_team_season_games_all(away_id, season_year)
         except Exception:
             continue
 
@@ -209,19 +234,19 @@ def get_last_h2h_games(
             pts_a = float(row["PTS_A"])
             pts_b = float(row["PTS_B"])
 
-            # linha A é vista da equipa "home_team"
-            if "vs" in matchup:  # ex.: BOS vs LAL  -> home_team está em casa
+            # linha A é vista da perspetiva da equipa home_team
+            if "vs" in matchup:      # ex.: PHI vs ORL
                 home_abbr_game = home_abbr
                 away_abbr_game = away_abbr
                 pts_home = pts_a
                 pts_away = pts_b
-            elif "@" in matchup:  # ex.: BOS @ LAL -> home_team está fora
+            elif "@" in matchup:     # ex.: PHI @ ORL
                 home_abbr_game = away_abbr
                 away_abbr_game = home_abbr
                 pts_home = pts_b
                 pts_away = pts_a
             else:
-                # fallback, se o formato for estranho
+                # fallback
                 home_abbr_game = home_abbr
                 away_abbr_game = away_abbr
                 pts_home = pts_a
@@ -317,7 +342,6 @@ def split_home_away(df: pd.DataFrame):
     df_away = df[df["MATCHUP"].str.contains("@")]
     return df_home, df_away
 
-
 def summarize_team_stats(df: pd.DataFrame) -> dict:
     """Calcula médias simples de estatísticas de equipa."""
     if df is None or df.empty:
@@ -326,26 +350,53 @@ def summarize_team_stats(df: pd.DataFrame) -> dict:
     stats = {}
     stats["Jogos analisados"] = len(df)
 
+    # Pontos marcados e sofridos
     if "PTS" in df.columns:
         stats["Pontos por jogo"] = round(df["PTS"].mean(), 1)
 
+    if "PTS" in df.columns and "PLUS_MINUS" in df.columns:
+        # PLUS_MINUS = PTS_equipa - PTS_adversário  ->  PTS_adversário = PTS_equipa - PLUS_MINUS
+        opp_pts = df["PTS"] - df["PLUS_MINUS"]
+        stats["Pontos concedidos por jogo"] = round(opp_pts.mean(), 1)
+
+    # Eficiência de lançamentos
     if "FG_PCT" in df.columns:
         stats["FG% (lançamentos)"] = round(df["FG_PCT"].mean() * 100, 1)
 
     if "FG3_PCT" in df.columns:
         stats["3PT% (triplos)"] = round(df["FG3_PCT"].mean() * 100, 1)
 
+    # Ressaltos
+    if "OREB" in df.columns:
+        stats["Ressaltos ofensivos por jogo"] = round(df["OREB"].mean(), 1)
+
+    if "DREB" in df.columns:
+        stats["Ressaltos defensivos por jogo"] = round(df["DREB"].mean(), 1)
+
     if "REB" in df.columns:
         stats["Ressaltos por jogo"] = round(df["REB"].mean(), 1)
 
+    # Assistências, turnovers e rácio AST/TO
     if "AST" in df.columns:
         stats["Assistências por jogo"] = round(df["AST"].mean(), 1)
 
     if "TOV" in df.columns:
         stats["Turnovers por jogo"] = round(df["TOV"].mean(), 1)
 
-    return stats
+    if "AST" in df.columns and "TOV" in df.columns:
+        ast_sum = df["AST"].sum()
+        tov_sum = df["TOV"].sum()
+        if tov_sum > 0:
+            stats["Rácio de assistências para turnover"] = round(ast_sum / tov_sum, 2)
 
+    # Defesa de impacto
+    if "STL" in df.columns:
+        stats["Roubos de bola por jogo"] = round(df["STL"].mean(), 1)
+
+    if "BLK" in df.columns:
+        stats["Abafos por jogo"] = round(df["BLK"].mean(), 1)
+
+    return stats
 
 def build_team_matchup_report(
     home_abbr: str,
