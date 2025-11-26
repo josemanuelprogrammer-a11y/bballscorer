@@ -19,6 +19,7 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib import colors
 from reportlab.lib.units import cm
+from reportlab.platypus import PageBreak
 import io
 
 TEAM_ABBR_TO_NAME = {
@@ -569,13 +570,18 @@ with tab_teams:
                 )
 
                 if h2h_table is not None and not h2h_table.empty:
-                    elements_teams.append(Spacer(1, 16))
+                    # 👉 força nova página antes do H2H
+                    elements_teams.append(PageBreak())
+                
+                    # 👉 espaçamento a partir do topo da página (aumenta/diminui à vontade)
+                    elements_teams.append(Spacer(1, 60))  # 60 pts ≈ 2 cm
+                
                     h2h_count = h2h_table.attrs.get("h2h_count", len(h2h_table))
                     h2h_avg_total = h2h_table.attrs.get(
                         "h2h_avg_total_points",
                         float(h2h_table["Total pontos"].mean()),
                     )
-
+                
                     elements_teams.append(
                         Paragraph(
                             f"Últimos {h2h_count} confrontos diretos (H2H)",
@@ -1034,5 +1040,6 @@ with tab_player:
                     file_name=f"report_{full_name.replace(' ', '_')}_multi.pdf",
                     mime="application/pdf",
                 )
+
 
 
