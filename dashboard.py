@@ -1,4 +1,5 @@
 import streamlit as st
+import pandas as pd
 
 from nba_core import (
     build_player_multi_stats_report,
@@ -20,9 +21,42 @@ from reportlab.lib import colors
 from reportlab.lib.units import cm
 import io
 
+TEAM_ABBR_TO_NAME = {
+    "ATL": "Atlanta Hawks",
+    "BOS": "Boston Celtics",
+    "BKN": "Brooklyn Nets",
+    "CHA": "Charlotte Hornets",
+    "CHI": "Chicago Bulls",
+    "CLE": "Cleveland Cavaliers",
+    "DAL": "Dallas Mavericks",
+    "DEN": "Denver Nuggets",
+    "DET": "Detroit Pistons",
+    "GSW": "Golden State Warriors",
+    "HOU": "Houston Rockets",
+    "IND": "Indiana Pacers",
+    "LAC": "Los Angeles Clippers",
+    "LAL": "Los Angeles Lakers",
+    "MEM": "Memphis Grizzlies",
+    "MIA": "Miami Heat",
+    "MIL": "Milwaukee Bucks",
+    "MIN": "Minnesota Timberwolves",
+    "NOP": "New Orleans Pelicans",
+    "NYK": "New York Knicks",
+    "OKC": "Oklahoma City Thunder",
+    "ORL": "Orlando Magic",
+    "PHI": "Philadelphia 76ers",
+    "PHX": "Phoenix Suns",
+    "POR": "Portland Trail Blazers",
+    "SAC": "Sacramento Kings",
+    "SAS": "San Antonio Spurs",
+    "TOR": "Toronto Raptors",
+    "UTA": "Utah Jazz",
+    "WAS": "Washington Wizards",
+}
 
 # Caminho do logo usado pelo programa
 LOGO_PATH = "bball_logo.png"
+
 
 def draw_header_footer(canvas, doc, title_text: str):
     """
@@ -34,69 +68,211 @@ def draw_header_footer(canvas, doc, title_text: str):
     width, height = doc.pagesize
 
     # ---------- CABEÇALHO ----------
-    # Logo à esquerda
     try:
         logo_w = 2.0 * cm
         logo_h = 2.0 * cm
         canvas.drawImage(
             LOGO_PATH,
-            20,                     # X
-            height - logo_h - 20,   # Y
+            20,
+            height - logo_h - 20,
             width=logo_w,
             height=logo_h,
             preserveAspectRatio=True,
             mask="auto",
         )
     except Exception:
-        pass  # Se o logo falhar, continua
+        pass
 
-    # Título principal (programa)
     canvas.setFont("Helvetica", 12)
     canvas.drawCentredString(
         width / 2,
-        height - 28,       # ↓ antes era -20
-        "BBall Scorer – estatísticas NBA | www.bballscorer.com"
+        height - 28,
+        "BBall Scorer – estatísticas NBA | www.bballscorer.com",
     )
 
-    canvas.setFont("Helvetica-Bold", 13)  # antes era 10 e sem bold
-    canvas.drawCentredString(
-        width / 2,
-        height - 50,
-        title_text
-    )
+    canvas.setFont("Helvetica-Bold", 13)
+    canvas.drawCentredString(width / 2, height - 50, title_text)
 
-
-    # Linha fina de separação
     canvas.setLineWidth(0.3)
-    canvas.line(
-        width * 0.15,         # início mais à direita
-        height - 58,
-        width * 0.85,         # fim mais cedo
-        height - 58
-    )
+    canvas.line(width * 0.15, height - 58, width * 0.85, height - 58)
 
-
-    # ---------- RODAPÉ ----------
     from datetime import datetime
+
     canvas.setFont("Helvetica", 8)
-
-    # Página
     canvas.drawRightString(width - 20, 18, f"Página {doc.page}")
-
-    # Data/hora
-    canvas.drawString(20, 18, "Gerado em: " + datetime.now().strftime("%d/%m/%Y %H:%M"))
+    canvas.drawString(
+        20, 18, "Gerado em: " + datetime.now().strftime("%d/%m/%Y %H:%M")
+    )
 
     canvas.restoreState()
 
+
+# ---------------------------------------------------------
+# Helpers de estilo para o dashboard
+# ---------------------------------------------------------
+def _strip_prefix_metric(df_block: pd.DataFrame) -> pd.DataFrame:
+    """Remove 'Geral - ' e 'Casa/Fora - ' da coluna Métrica."""
+    df_block = df_block.copy()
+    if "Métrica" in df_block.columns:
+        df_block["Métrica"] = (
+            df_block["Métrica"]
+            .str.replace("Geral - ", "", regex=False)
+            .str.replace("Casa/Fora - ", "", regex=False)
+        )
+    return df_block
+
+def style_team_block(df_block: pd.DataFrame, home_name: str, away_name: str):
+    """
+    Recebe um pedaço do df_teams (ex.: só linhas 'Geral - ...'
+    ou só 'Casa/Fora - ...') e devolve um Styler com:
+      - colunas de ✓ removidas
+      - coluna Métrica sem prefixos
+      - células de valor pintadas (verde / vermelho)
+      - números formatados com 1 casa decimal
+    """
+    df_block = _strip_prefix_metric(df_block).reset_index(drop=True)
+
+    # nomes das colunas de equipa (já vêm como nome completo)
+    home_col = home_name
+    away_col = away_name
+    home_flag_col = f"{home_name} ✓"
+    away_flag_col = f"{away_name} ✓"
+
+    # flags de vantagem/desvantagem
+    flags = df_block[[home_flag_col, away_flag_col]].copy()
+    df_show = df_block.drop(columns=[home_flag_col, away_flag_col])
+
+    def color_from_flags(row):
+        idx = row.name
+        flag_home = flags.loc[idx, home_flag_col]
+        flag_away = flags.loc[idx, away_flag_col]
+
+        styles = []
+        for col in df_show.columns:
+            if col == home_col:
+                if flag_home == "✅":
+                    styles.append("background-color: #c6efce")
+                elif flag_home == "❌":
+                    styles.append("background-color: #ffc7ce")
+                else:
+                    styles.append("")
+            elif col == away_col:
+                if flag_away == "✅":
+                    styles.append("background-color: #c6efce")
+                elif flag_away == "❌":
+                    styles.append("background-color: #ffc7ce")
+                else:
+                    styles.append("")
+            else:
+                styles.append("")
+        return styles
+
+    styler = df_show.style.apply(color_from_flags, axis=1).format(precision=1)
+    return styler
+
+def style_player_table(df_multi: pd.DataFrame):
+    """
+    Remove colunas '... ✓' e pinta as colunas de valor associadas
+    (ex.: 'PTS', 'REB', 'PRA', etc.) com base nessas flags.
+    """
+    df_block = df_multi.reset_index(drop=True)
+
+    flag_cols = [c for c in df_block.columns if "✓" in c]
+    flags = {}
+    for fc in flag_cols:
+        base = fc.replace("✓", "").strip()
+        flags[base] = df_block[fc]
+
+    df_show = df_block.drop(columns=flag_cols)
+
+    def color_row(row):
+        idx = row.name
+        styles = []
+        for col in df_show.columns:
+            base = col
+            if base in flags:
+                flag_val = flags[base].iloc[idx]
+                if flag_val == "✅":
+                    styles.append("background-color: #c6efce")
+                elif flag_val == "❌":
+                    styles.append("background-color: #ffc7ce")
+                else:
+                    styles.append("")
+            else:
+                styles.append("")
+        return styles
+
+    styler = df_show.style.apply(color_row, axis=1).format(precision=1)
+    return styler
+
+def style_h2h_table(df_h2h: pd.DataFrame):
+    """
+    Remove colunas '... ✓' e pinta as células de PTS Casa / PTS Fora
+    de verde/vermelho com base nesses flags. Formata números como inteiros.
+    """
+    df = df_h2h.copy().reset_index(drop=True)
+
+    # identificar colunas de flags (Casa ✓, Fora ✓)
+    flag_cols = [c for c in df.columns if "✓" in c]
+    if len(flag_cols) != 2:
+        # fallback: devolve apenas com formatação numérica
+        num_cols = df.select_dtypes(include="number").columns
+        return df.style.format(precision=1, subset=num_cols)
+
+    home_flag_col, away_flag_col = flag_cols
+    pts_home_col = "PTS Casa"
+    pts_away_col = "PTS Fora"
+
+    flags_home = df[home_flag_col]
+    flags_away = df[away_flag_col]
+
+    # dataframe a mostrar (sem colunas ✓)
+    df_show = df.drop(columns=flag_cols)
+
+    def color_row(row):
+        idx = row.name
+        styles = []
+        for col in df_show.columns:
+            if col == pts_home_col:
+                flag = str(flags_home.iloc[idx]).strip()
+                if flag == "✅":
+                    styles.append("background-color: #c6efce")
+                elif flag == "❌":
+                    styles.append("background-color: #ffc7ce")
+                else:
+                    styles.append("")
+            elif col == pts_away_col:
+                flag = str(flags_away.iloc[idx]).strip()
+                if flag == "✅":
+                    styles.append("background-color: #c6efce")
+                elif flag == "❌":
+                    styles.append("background-color: #ffc7ce")
+                else:
+                    styles.append("")
+            else:
+                styles.append("")
+        return styles
+
+    num_cols = df_show.select_dtypes(include="number").columns
+
+    styler = (
+        df_show.style
+        .apply(color_row, axis=1)
+        .format(precision=1, subset=num_cols)  # 111 em vez de 111.000000
+    )
+    return styler
+
+# ---------------------------------------------------------
+# Configuração da página
+# ---------------------------------------------------------
 st.set_page_config(
     page_title="NBA - Estatísticas",
-    layout="wide"
+    layout="wide",
 )
 
 col_logo, col_title = st.columns([0.4, 6])
 
 with col_logo:
-    # usa o caminho do logo no container
     st.image("bball_logo.png", width=90)
 
 with col_title:
@@ -108,12 +284,10 @@ st.markdown(
 )
 
 # ------------------- TABS PRINCIPAIS ------------------- #
-
 tab_teams, tab_player = st.tabs(["🏀 Analisar equipas", "📋 Analisar jogador"])
 
 
 # =================== TAB 1: ANÁLISE DE EQUIPAS =================== #
-
 with tab_teams:
     st.subheader("🏀 Análise de equipas")
 
@@ -126,13 +300,11 @@ with tab_teams:
     col_home, col_away, col_season = st.columns(3)
     with col_home:
         home_abbr = st.text_input(
-            "Equipa da casa (nome ou abreviatura)",
-            value="BOS"
+            "Equipa da casa (nome ou abreviatura)", value="BOS"
         ).strip()
     with col_away:
         away_abbr = st.text_input(
-            "Equipa de fora (nome ou abreviatura)",
-            value="LAL"
+            "Equipa de fora (nome ou abreviatura)", value="LAL"
         ).strip()
     with col_season:
         season_team = st.number_input(
@@ -173,17 +345,55 @@ with tab_teams:
             else:
                 st.success(f"Comparação gerada para {home_abbr} vs {away_abbr}.")
 
-                st.markdown(
-                    "Ao lado de cada equipa existe uma coluna de **Green**:\n"
-                    "- **✅** significa que essa equipa está melhor nessa métrica;\n"
-                    "- **❌** significa que está pior;\n"
-                    "- Em métricas de ataque (PTS, FG%, 3PT%, REB, AST) → mais alto é melhor;\n"
-                    "- Em **Turnovers por jogo** → mais baixo é melhor."
+                # ---- Nomes completos das equipas (para dashboard + PDF) ----
+                home_full = (
+                    df_teams.attrs.get("home_team_full_name")
+                    or TEAM_ABBR_TO_NAME.get(home_abbr.upper(), home_abbr)
+                )
+                away_full = (
+                    df_teams.attrs.get("away_team_full_name")
+                    or TEAM_ABBR_TO_NAME.get(away_abbr.upper(), away_abbr)
                 )
 
-                st.dataframe(df_teams, use_container_width=True)
+                # renomear colunas BOS -> Boston Celtics, LAL -> Los Angeles Lakers
+                rename_cols = {}
+                for short, full in [(home_abbr, home_full), (away_abbr, away_full)]:
+                    for suffix in ["", " ✓"]:
+                        old = f"{short}{suffix}"
+                        new = f"{full}{suffix}"
+                        if old in df_teams.columns:
+                            rename_cols[old] = new
 
-                # botão para descarregar CSV
+                df_teams = df_teams.rename(columns=rename_cols)
+
+                # nomes que vamos usar daqui para a frente como "colunas da equipa"
+                home_col = home_full
+                away_col = away_full
+
+                st.markdown(
+                    "As células em **verde** indicam vantagem nessa métrica; "
+                    "as em **vermelho**, desvantagem. "
+                    "Em **Turnovers por jogo** e **Pontos concedidos por jogo**, menos é melhor."
+                )
+
+                # separar em blocos: Geral e Casa/Fora
+                mask_geral = df_teams["Métrica"].str.startswith("Geral -")
+                mask_casafora = df_teams["Métrica"].str.startswith("Casa/Fora -")
+
+                df_geral = df_teams[mask_geral]
+                df_casafora = df_teams[mask_casafora]
+
+                if not df_geral.empty:
+                    st.markdown("#### Forma geral (últimos jogos)")
+                    styled_geral = style_team_block(df_geral, home_col, away_col)
+                    st.table(styled_geral)
+
+                if not df_casafora.empty:
+                    st.markdown("#### Casa vs Fora (últimos jogos em casa/fora)")
+                    styled_casa = style_team_block(df_casafora, home_col, away_col)
+                    st.table(styled_casa)
+
+                # CSV com df_teams completo
                 csv_teams = df_teams.to_csv(index=False).encode("utf-8-sig")
                 st.download_button(
                     label="💾 Descarregar tabela em CSV",
@@ -214,9 +424,14 @@ with tab_teams:
                         f"Média de **total de pontos** nesses jogos: **{h2h_avg_total:.1f}**."
                     )
 
-                    st.dataframe(h2h_table, use_container_width=True)
+                    # mapear siglas -> nomes completos nas colunas de equipa
+                    team_name_map = {home_abbr: home_full, away_abbr: away_full}
+                    h2h_display = h2h_table.replace(team_name_map)
 
-                    csv_h2h = h2h_table.to_csv(index=False).encode("utf-8-sig")
+                    styled_h2h = style_h2h_table(h2h_display)
+                    st.table(styled_h2h)
+
+                    csv_h2h = h2h_display.to_csv(index=False).encode("utf-8-sig")
                     st.download_button(
                         label="💾 Descarregar H2H em CSV",
                         data=csv_h2h,
@@ -227,9 +442,7 @@ with tab_teams:
                     st.info(
                         "Não foram encontrados confrontos diretos recentes entre estas equipas nas últimas épocas."
                     )
-
-
-                # ---------- BOTÃO PDF (Relatório completo de equipas) ----------
+                # ---------- BOTÃO PDF (Relatório de equipas) ----------
                 pdf_buffer_teams = io.BytesIO()
 
                 doc_teams = SimpleDocTemplate(
@@ -244,11 +457,9 @@ with tab_teams:
                 elements_teams = []
                 styles = getSampleStyleSheet()
 
-                # Título
-                title_text = f"Relatório de equipas - {home_abbr} vs {away_abbr}"
+                title_text = f"Relatório de equipas - {home_full} vs {away_full}"
                 title = Paragraph(title_text, styles["Title"])
 
-                # Subtítulo com parâmetros usados
                 season_str = f"{season_team}-{str(season_team + 1)[-2:]}"
                 subtitle_text = (
                     f"Época: {season_str} | "
@@ -263,72 +474,100 @@ with tab_teams:
                 elements_teams.append(subtitle)
                 elements_teams.append(Spacer(1, 12))
 
-                # -------- Tabela 1: comparação geral / casa-fora --------
                 elements_teams.append(
-                    Paragraph("Comparação estatística das equipas", styles["Heading3"])
+                    Paragraph(
+                        "Comparação estatística das equipas", styles["Heading3"]
+                    )
                 )
-                elements_teams.append(Spacer(1, 6))
 
-                df_pdf_teams = df_teams.copy().astype(str)
+                # -------- Tabelas: Forma geral e Casa/Fora (igual ao dashboard) --------
 
-                # trocar símbolos nas colunas com ✓
-                for col in df_pdf_teams.columns:
-                    if "✓" in col:
-                        df_pdf_teams[col] = df_pdf_teams[col].replace(
-                            {"✅": "✔", "❌": "✘", "🟩": "✔", "🟥": "✘"}
-                        )
+                home_flag_col = f"{home_col} ✓"
+                away_flag_col = f"{away_col} ✓"
 
-                # cabeçalho: esconde texto nas colunas ✓
-                headers_teams = []
-                for col in df_pdf_teams.columns:
-                    if "✓" in col:
-                        headers_teams.append("")
-                    else:
-                        headers_teams.append(col)
+                # separar blocos
+                mask_geral = df_teams["Métrica"].str.startswith("Geral -")
+                mask_casafora = df_teams["Métrica"].str.startswith("Casa/Fora -")
 
-                table_data_teams = [headers_teams] + df_pdf_teams.values.tolist()
-                table_teams = Table(table_data_teams, repeatRows=1)
-
-                style_cmds_teams = [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eeeeee")),
-                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
-                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                    ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
-                    ("FONTSIZE", (0, 0), (-1, -1), 7),
-                    ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
-                    ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-                ]
+                df_geral_raw = df_teams[mask_geral]
+                df_casafora_raw = df_teams[mask_casafora]
 
                 green_color = colors.HexColor("#c6efce")
                 red_color = colors.HexColor("#ffc7ce")
 
-                # pintar células das colunas ✓
-                for row_idx in range(1, len(table_data_teams)):  # ignora header
-                    for col_idx, col_name in enumerate(df_pdf_teams.columns):
-                        if "✓" not in col_name:
-                            continue
+                def build_team_block_table(df_block_raw, titulo):
+                    if df_block_raw is None or df_block_raw.empty:
+                        return
 
-                        cell_value = str(table_data_teams[row_idx][col_idx]).strip()
-                        if cell_value == "✔":
-                            style_cmds_teams.append(
-                                ("BACKGROUND", (col_idx, row_idx), (col_idx, row_idx), green_color)
+                    # título do bloco
+                    elements_teams.append(Paragraph(titulo, styles["Heading3"]))
+                    elements_teams.append(Spacer(1, 6))
+
+                    df_block_raw = _strip_prefix_metric(df_block_raw)
+
+                    flags_block = df_block_raw[[home_flag_col, away_flag_col]].reset_index(drop=True)
+
+                    df_block = df_block_raw.drop(columns=[home_flag_col, away_flag_col]).copy()
+                    # arredondar números e converter para string
+                    num_cols_block = df_block.select_dtypes(include="number").columns
+                    df_block[num_cols_block] = df_block[num_cols_block].round(1)
+                    df_block = df_block.astype(str)
+
+                    headers = list(df_block.columns)
+                    table_data = [headers] + df_block.values.tolist()
+                    table = Table(table_data, repeatRows=1)
+
+                    style_cmds = [
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eeeeee")),
+                        ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
+                        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                        ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+                        ("FONTSIZE", (0, 0), (-1, -1), 7),
+                        ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
+                        ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+                    ]
+
+                    # índices das colunas da equipa
+                    home_idx = df_block.columns.get_loc(home_col)
+                    away_idx = df_block.columns.get_loc(away_col)
+
+                    # pintar células dos valores com base nas flags
+                    for row_idx in range(1, len(table_data)):  # 1 = ignora header
+                        flag_home = str(flags_block.loc[row_idx - 1, home_flag_col]).strip()
+                        flag_away = str(flags_block.loc[row_idx - 1, away_flag_col]).strip()
+
+                        if flag_home == "✅":
+                            style_cmds.append(
+                                ("BACKGROUND", (home_idx, row_idx), (home_idx, row_idx), green_color)
                             )
-                            style_cmds_teams.append(
-                                ("TEXTCOLOR", (col_idx, row_idx), (col_idx, row_idx), colors.black)
-                            )
-                        elif cell_value == "✘":
-                            style_cmds_teams.append(
-                                ("BACKGROUND", (col_idx, row_idx), (col_idx, row_idx), red_color)
-                            )
-                            style_cmds_teams.append(
-                                ("TEXTCOLOR", (col_idx, row_idx), (col_idx, row_idx), colors.black)
+                        elif flag_home == "❌":
+                            style_cmds.append(
+                                ("BACKGROUND", (home_idx, row_idx), (home_idx, row_idx), red_color)
                             )
 
-                table_teams.setStyle(TableStyle(style_cmds_teams))
-                elements_teams.append(table_teams)
+                        if flag_away == "✅":
+                            style_cmds.append(
+                                ("BACKGROUND", (away_idx, row_idx), (away_idx, row_idx), green_color)
+                            )
+                        elif flag_away == "❌":
+                            style_cmds.append(
+                                ("BACKGROUND", (away_idx, row_idx), (away_idx, row_idx), red_color)
+                            )
 
-                # -------- Tabela 2: H2H, se existir --------
+                    table.setStyle(TableStyle(style_cmds))
+                    elements_teams.append(table)
+                    elements_teams.append(Spacer(1, 10))
+
+
+                # bloco 1: forma geral
+                build_team_block_table(df_geral_raw, "Forma geral (últimos jogos)")
+
+                # bloco 2: casa / fora
+                build_team_block_table(
+                    df_casafora_raw, "Casa vs Fora (últimos jogos em casa/fora)"
+                )
+
                 if h2h_table is not None and not h2h_table.empty:
                     elements_teams.append(Spacer(1, 16))
                     h2h_count = h2h_table.attrs.get("h2h_count", len(h2h_table))
@@ -351,21 +590,29 @@ with tab_teams:
                     )
                     elements_teams.append(Spacer(1, 6))
 
-                    df_pdf_h2h = h2h_table.copy().astype(str)
-                    for col in df_pdf_h2h.columns:
-                        if "✓" in col:
-                            df_pdf_h2h[col] = df_pdf_h2h[col].replace(
-                                {"✅": "✔", "❌": "✘"}
-                            )
+                    team_name_map = {home_abbr: home_full, away_abbr: away_full}
+                    df_h2h_raw = h2h_table.replace(team_name_map).reset_index(drop=True)
 
-                    headers_h2h = []
-                    for col in df_pdf_h2h.columns:
-                        if "✓" in col:
-                            headers_h2h.append("")
-                        else:
-                            headers_h2h.append(col)
 
-                    table_data_h2h = [headers_h2h] + df_pdf_h2h.values.tolist()
+                    # identificar colunas de flags
+                    flag_cols = [c for c in df_h2h_raw.columns if "✓" in c]
+                    if len(flag_cols) == 2:
+                        home_flag_col, away_flag_col = flag_cols
+                        flags_home = df_h2h_raw[home_flag_col]
+                        flags_away = df_h2h_raw[away_flag_col]
+                        df_h2h = df_h2h_raw.drop(columns=flag_cols)
+                    else:
+                        flags_home = flags_away = None
+                        df_h2h = df_h2h_raw
+
+                    # arredondar números
+                    num_cols_h2h = df_h2h.select_dtypes(include="number").columns
+                    df_h2h[num_cols_h2h] = df_h2h[num_cols_h2h].round(0)
+
+                    df_h2h = df_h2h.astype(str)
+
+                    headers_h2h = list(df_h2h.columns)
+                    table_data_h2h = [headers_h2h] + df_h2h.values.tolist()
                     table_h2h = Table(table_data_h2h, repeatRows=1)
 
                     style_cmds_h2h = [
@@ -379,32 +626,49 @@ with tab_teams:
                         ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
                     ]
 
-                    for row_idx in range(1, len(table_data_h2h)):
-                        for col_idx, col_name in enumerate(df_pdf_h2h.columns):
-                            if "✓" not in col_name:
-                                continue
-                            cell_value = str(table_data_h2h[row_idx][col_idx]).strip()
-                            if cell_value == "✔":
+                    green_color = colors.HexColor("#c6efce")
+                    red_color = colors.HexColor("#ffc7ce")
+
+                    # índices das colunas de PTS
+                    try:
+                        pts_home_idx = df_h2h.columns.get_loc("PTS Casa")
+                        pts_away_idx = df_h2h.columns.get_loc("PTS Fora")
+                    except KeyError:
+                        pts_home_idx = pts_away_idx = None
+
+                    if pts_home_idx is not None and flags_home is not None:
+                        for row_idx in range(1, len(table_data_h2h)):
+                            flag_h = str(flags_home.iloc[row_idx - 1]).strip()
+                            flag_a = str(flags_away.iloc[row_idx - 1]).strip()
+
+                            if flag_h == "✅":
                                 style_cmds_h2h.append(
-                                    ("BACKGROUND", (col_idx, row_idx), (col_idx, row_idx), green_color)
+                                    ("BACKGROUND", (pts_home_idx, row_idx), (pts_home_idx, row_idx), green_color)
                                 )
-                            elif cell_value == "✘":
+                            elif flag_h == "❌":
                                 style_cmds_h2h.append(
-                                    ("BACKGROUND", (col_idx, row_idx), (col_idx, row_idx), red_color)
+                                    ("BACKGROUND", (pts_home_idx, row_idx), (pts_home_idx, row_idx), red_color)
+                                )
+
+                            if flag_a == "✅":
+                                style_cmds_h2h.append(
+                                    ("BACKGROUND", (pts_away_idx, row_idx), (pts_away_idx, row_idx), green_color)
+                                )
+                            elif flag_a == "❌":
+                                style_cmds_h2h.append(
+                                    ("BACKGROUND", (pts_away_idx, row_idx), (pts_away_idx, row_idx), red_color)
                                 )
 
                     table_h2h.setStyle(TableStyle(style_cmds_h2h))
                     elements_teams.append(table_h2h)
 
-                # Função de cabeçalho/rodapé específica para este relatório (equipas)
                 def header_footer_teams(canvas, doc):
                     draw_header_footer(
                         canvas,
                         doc,
-                        title_text=f"Relatório de Equipas – {home_abbr} vs {away_abbr}",
+                        title_text=f"Relatório de Equipas – {home_full} vs {away_full}",
                     )
 
-                # gerar o PDF com cabeçalho + rodapé
                 doc_teams.build(
                     elements_teams,
                     onFirstPage=header_footer_teams,
@@ -419,8 +683,8 @@ with tab_teams:
                     mime="application/pdf",
                 )
 
-# =================== TAB 2: ANÁLISE DE JOGADOR =================== #
 
+# =================== TAB 2: ANÁLISE DE JOGADOR =================== #
 with tab_player:
     st.subheader("📋 Analisar jogador")
 
@@ -433,8 +697,7 @@ with tab_player:
 
     with colA:
         player_name = st.text_input(
-            "Nome do jogador (ex.: 'Jayson Tatum', 'LeBron James')",
-            value=""
+            "Nome do jogador (ex.: 'Jayson Tatum', 'LeBron James')", value=""
         )
 
     with colB:
@@ -443,10 +706,9 @@ with tab_player:
             min_value=2000,
             max_value=2100,
             value=2025,
-            step=1
+            step=1,
         )
 
-    # Mapa de labels -> códigos internos
     stat_label_map = {
         "Pontos (PTS)": "pts",
         "Ressaltos (REB)": "reb",
@@ -454,11 +716,8 @@ with tab_player:
         "Triplos convertidos (FG3M)": "fg3m",
         "Roubos de Bola (STL)": "stl",
         "Desarmes de Lançamento (BLK)": "blk",
-
         "Pontos + Ressaltos + Assistências (PRA)": "pra",
         "Ressaltos + Assistências (RA)": "ra",
-
-        # NOVOS MERCADOS
         "Pontos + Ressaltos (P+R)": "pr",
         "Pontos + Assistências (P+A)": "pa",
         "Roubos + Desarmes (S+B)": "sb",
@@ -467,7 +726,6 @@ with tab_player:
         "Triplo-Duplo (TD)": "td",
     }
 
-    # --- Tipo de mercado: jogo inteiro ou período ---
     period_label_map = {
         "Jogo inteiro": None,
         "1.º período": 1,
@@ -483,7 +741,6 @@ with tab_player:
     )
     period_value = period_label_map[period_label]
 
-    # ------ SELECIONAR ESTATÍSTICAS ------ #
     st.markdown("### 🎯 Selecionar estatísticas")
 
     colC, colD = st.columns([2, 1])
@@ -505,7 +762,6 @@ with tab_player:
             key="last_n_multi",
         )
 
-    # --- Dicionário de linhas escolhidas ---
     stats_lines: dict[str, float] = {}
 
     if stats_escolhidas:
@@ -515,7 +771,6 @@ with tab_player:
         for i, label in enumerate(stats_escolhidas):
             sf = stat_label_map[label]
 
-            # defaults por tipo de mercado
             if sf == "pts":
                 default_line = 26.0
             elif sf == "reb":
@@ -530,15 +785,15 @@ with tab_player:
                 default_line = 11.5
             elif sf in ("stl", "blk"):
                 default_line = 1.5
-            elif sf == "pr":   # Pontos + Ressaltos
+            elif sf == "pr":
                 default_line = 24.5
-            elif sf == "pa":   # Pontos + Assistências
+            elif sf == "pa":
                 default_line = 21.5
-            elif sf == "sb":   # Roubos + Desarmes
+            elif sf == "sb":
                 default_line = 1.5
-            elif sf == "pb":   # Pontos + Desarmes
+            elif sf == "pb":
                 default_line = 18.5
-            elif sf in ("dd", "td"):  # Duplo / Triplo Duplo (Sim/Não)
+            elif sf in ("dd", "td"):
                 default_line = 0.5
             else:
                 default_line = 1.0
@@ -576,12 +831,18 @@ with tab_player:
             if df_multi is None or df_multi.empty:
                 st.error("Não foi possível obter dados para esse jogador/época.")
             else:
+                # --- Converter abreviaturas para nomes completos (equipa e adversário) ---
+                for col in ["Equipa", "Adversário"]:
+                    if col in df_multi.columns:
+                        df_multi[col] = df_multi[col].apply(
+                            lambda x: TEAM_ABBR_TO_NAME.get(str(x).upper(), x)
+                        )
+
                 full_name = df_multi.attrs.get("player_full_name", player_name)
                 stats_summary = df_multi.attrs.get("stats_summary", {})
                 avg_minutes = df_multi.attrs.get("avg_minutes", 0.0)
                 period_attr = df_multi.attrs.get("period", None)
 
-                # descrição do período para mostrar no texto
                 if period_attr is None:
                     period_desc = "Jogo inteiro"
                     period_suffix = ""
@@ -596,11 +857,9 @@ with tab_player:
                 )
                 st.markdown(f"- Período analisado: **{period_desc}**")
 
-                # Resumo por mercado (no dashboard)
                 st.markdown("#### Resumo por mercado")
                 linhas_resumo = []
                 for sf, cfg in stats_summary.items():
-                    # voltar do código interno ('pts', 'reb', ...) para o label bonito
                     nome = [k for k, v in stat_label_map.items() if v == sf][0]
                     linha = cfg["line"]
                     hits = cfg["hits"]
@@ -612,9 +871,14 @@ with tab_player:
                     )
                 st.markdown("\n".join(linhas_resumo))
 
-                st.dataframe(df_multi, use_container_width=True)
+                st.markdown(
+                    "As células em **verde** indicam jogos em que o jogador "
+                    "bateu a linha nessa estatística; em **vermelho**, falhou."
+                )
 
-                # ---------- BOTÃO CSV ----------
+                styled_multi = style_player_table(df_multi)
+                st.table(styled_multi)
+
                 csv_multi = df_multi.to_csv(index=False).encode("utf-8-sig")
                 st.download_button(
                     label="💾 Descarregar relatório em CSV",
@@ -623,10 +887,9 @@ with tab_player:
                     mime="text/csv",
                 )
 
-                # ---------- BOTÃO PDF (tabela igual ao dashboard) ----------
+                # ---------- PDF jogador ----------
                 pdf_buffer = io.BytesIO()
 
-                # documento em A4 na horizontal (mais espaço para colunas)
                 doc = SimpleDocTemplate(
                     pdf_buffer,
                     pagesize=landscape(A4),
@@ -639,18 +902,18 @@ with tab_player:
                 elements = []
                 styles = getSampleStyleSheet()
 
-                # Título e resumo
                 title_style = ParagraphStyle(
                     name="TitleBig",
                     fontName="Helvetica-Bold",
                     fontSize=20,
                     leading=26,
-                    alignment=1,  # 1 = centrado
+                    alignment=1,
                 )
 
-                title = Paragraph(f"Relatório de Jogador – {full_name}", title_style)
+                title = Paragraph(
+                    f"Relatório de Jogador – {full_name}", title_style
+                )
 
-                # texto do subtítulo com jogos + período
                 if period_attr is None:
                     period_text_pdf = "Período analisado: Jogo inteiro"
                 else:
@@ -664,12 +927,15 @@ with tab_player:
                 elements.append(subtitle)
                 elements.append(Spacer(1, 12))
 
-                # Resumo por mercado (no PDF)
                 if stats_summary:
-                    elements.append(Paragraph("Resumo por mercado:", styles["Heading3"]))
+                    elements.append(
+                        Paragraph("Resumo por mercado:", styles["Heading3"])
+                    )
                     resumo_linhas_pdf = []
                     for sf, cfg in stats_summary.items():
-                        nome = [k for k, v in stat_label_map.items() if v == sf][0]
+                        nome = [
+                            k for k, v in stat_label_map.items() if v == sf
+                        ][0]
                         linha = cfg["line"]
                         hits = cfg["hits"]
                         total = cfg["total"]
@@ -682,33 +948,26 @@ with tab_player:
                     elements.append(Paragraph(resumo_html, styles["Normal"]))
                     elements.append(Spacer(1, 12))
 
-                # -------- Tabela com os mesmos dados do df_multi --------
-                # criar cópia só para o PDF (para trocar os símbolos)
-                df_pdf = df_multi.copy().astype(str)
+                df_pdf_raw = df_multi.copy()
+                flag_cols = [c for c in df_pdf_raw.columns if "✓" in c]
+                flags_pdf = {}
+                for fc in flag_cols:
+                    base = fc.replace("✓", "").strip()
+                    flags_pdf[base] = df_pdf_raw[fc].reset_index(drop=True)
 
-                # trocar símbolos nas colunas "Green" para ✔ / ✘
-                for col in df_pdf.columns:
-                    if "✓" in col:
-                        df_pdf[col] = df_pdf[col].replace(
-                            {"✅": "✔", "❌": "✘", "🟩": "✔", "🟥": "✘"}
-                        )
+                df_pdf = (
+                    df_pdf_raw.drop(columns=flag_cols)
+                    .copy()
+                    .round(1)
+                    .astype(str)
+                )
 
-                # cabeçalho personalizado + linhas
-                headers = []
-                for col in df_pdf.columns:
-                    if "✓" in col:
-                        # não mostrar texto no cabeçalho das colunas de Green/Red
-                        headers.append("")
-                    else:
-                        headers.append(col)
-
+                headers = list(df_pdf.columns)
                 table_data = [headers] + df_pdf.values.tolist()
-
                 table = Table(table_data, repeatRows=1)
 
-                # estilos base
                 style_cmds = [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eeeeee")),  # header
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eeeeee")),
                     ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
                     ("ALIGN", (0, 0), (-1, -1), "CENTER"),
                     ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
@@ -718,35 +977,41 @@ with tab_player:
                     ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
                 ]
 
-                # cores para green / red
-                green_color = colors.HexColor("#c6efce")   # verde claro
-                red_color = colors.HexColor("#ffc7ce")     # vermelho claro
+                green_color = colors.HexColor("#c6efce")
+                red_color = colors.HexColor("#ffc7ce")
 
-                # pintar células das colunas Green
-                for row_idx in range(1, len(table_data)):  # ignora header
-                    for col_idx, col_name in enumerate(df_pdf.columns):
-                        if "✓" not in col_name:
+                value_col_idx = {
+                    col: df_pdf.columns.get_loc(col) for col in df_pdf.columns
+                }
+
+                for row_idx in range(1, len(table_data)):
+                    flag_row = row_idx - 1
+                    for base, series_flags in flags_pdf.items():
+                        if base not in value_col_idx:
                             continue
+                        flag_val = str(series_flags.iloc[flag_row])
+                        col_idx = value_col_idx[base]
 
-                        cell_value = str(table_data[row_idx][col_idx]).strip()
-
-                        if cell_value == "✔":
+                        if flag_val == "✅":
                             style_cmds.append(
-                                ("BACKGROUND", (col_idx, row_idx), (col_idx, row_idx), green_color)
+                                (
+                                    "BACKGROUND",
+                                    (col_idx, row_idx),
+                                    (col_idx, row_idx),
+                                    green_color,
+                                )
                             )
+                        elif flag_val == "❌":
                             style_cmds.append(
-                                ("TEXTCOLOR", (col_idx, row_idx), (col_idx, row_idx), colors.black)
-                            )
-                        elif cell_value == "✘":
-                            style_cmds.append(
-                                ("BACKGROUND", (col_idx, row_idx), (col_idx, row_idx), red_color)
-                            )
-                            style_cmds.append(
-                                ("TEXTCOLOR", (col_idx, row_idx), (col_idx, row_idx), colors.black)
+                                (
+                                    "BACKGROUND",
+                                    (col_idx, row_idx),
+                                    (col_idx, row_idx),
+                                    red_color,
+                                )
                             )
 
                 table.setStyle(TableStyle(style_cmds))
-
                 elements.append(table)
 
                 def header_footer_player(canvas, doc):
@@ -756,7 +1021,6 @@ with tab_player:
                         title_text=f"Relatório de Jogador – {full_name}",
                     )
 
-                # gerar o PDF com cabeçalho + rodapé
                 doc.build(
                     elements,
                     onFirstPage=header_footer_player,
@@ -770,4 +1034,3 @@ with tab_player:
                     file_name=f"report_{full_name.replace(' ', '_')}_multi.pdf",
                     mime="application/pdf",
                 )
-
